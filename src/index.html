@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Blur people and license plates locally on your computer</title>
+  <script defer src="mp4box.all.min.js"></script>
+  <script defer type="module" src="main.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" type="text/css" />
+</head>
+
+<body>
+  <h1>Local Blurrer / Anonymizer</h1>
+  <p>This tool detects people and license plates in videos, blurs them and
+    allows you to download the processed video. All on your computer – no data is
+    sent to the server / “the cloud”.</p>
+
+  <p>This tool is in <strong>early development</strong>. You'll likely find
+    issues or videos not working. Reach out on <a href="https://norden.social/@VelorouteHamburg"
+      target="_blank">Mastodon</a>
+    for questions/support. You can also <a href="https://github.com/breunigs/blurweb/">view the source code</a>.</p>
+
+  <strong>Quick start:</strong>
+  <ul>
+    <li>“Load Sample Video” in “1. Video Selection”</li>
+    <li>“Start Processing” in “4. Processing”</li>
+    <li>wait until video preview plays</li>
+  </ul>
+
+  <noscript>You need to enable JavaScript, <tt>localStorage</tt>, WASM,
+    WebWorkers and probably a bunch of other technologies for this to work. WebGPU
+    is optional, but recommended.</noscript>
+
+  <h2>1. Video Selection</h2>
+  <fieldset>
+    <legend>Load Video File</legend>
+
+    <div class="flexHelp">
+      <div>
+        <button id="loadSampleVideo">Load Sample Video</button><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;––– or –––<br>
+        <label>
+          Pick Local Video File<br>
+          <input id="loadVideoFile" type="file" />
+        </label><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;––– or –––<br>
+        Drag'n'Drop a file from your computer
+        <br>
+        <br>
+        <label class="progress">
+          <span id="fileLoaderText"></span><br>
+          <progress id="fileLoader" min="0" max="0" value="0" class="hide"></progress>
+        </label>
+      </div>
+      <div>
+        <p>If you just want to test this tool, use "Load Sample Video" to get a
+          short video to experiment with. Your own videos will be processed
+          <em>locally</em>, i.e. they don't leave your computer. Either use
+          the file picker, or drag'n'drop a file onto the website.
+        </p>
+      </div>
+  </fieldset>
+  <fieldset>
+    <legend>Selected video</legend>
+    <span id="selectedVideoFile"></span>
+  </fieldset>
+
+  <details>
+    <summary>
+      <h2>2. Detector Options</h2>
+    </summary>
+    <fieldset>
+      <legend>Model Selection</legend>
+
+      <div class="flexHelp">
+        <div>
+          <label>
+            Which model to use for detection?
+            <div class="flexRow">
+              <span style="text-align: center">
+                fast and<br>
+                inaccurate
+              </span>
+              <div style="display: inline-block; padding: 0 1rem; margin-top: 0.5em">
+                <input type="range" id="modelSelect" list="availableModels" min="0" max="0" step="1" value="0" />
+                <datalist id="availableModels">
+                  <option label="(still loading)"></option>
+                </datalist>
+              </div>
+              <span style="text-align: center">
+                slow and<br>
+                more&nbsp;accurate
+              </span>
+            </div>
+          </label>
+          <br>
+          <br>
+          <label>
+            Model Download: <span id="modelDownloadText"></span><br>
+            <progress id="modelDownload" min="0" max="0"></progress>
+          </label>
+        </div>
+        <div>
+          <p>Pick the fastest model that works for you. If you don't want to check
+            the output, pick the slowest model you are willing to wait for. Even
+            the slowest model isn't perfect, and they <em>will</em> fail to detect
+            “obvious” occurrences.</p>
+
+          <p>Use the table below for guidance. Mobile devices can only use the
+            XS model, or they might reload the page without any error message. On
+            a laptop try S or M. The larger models are only for “gaming computers”
+            with a dedicated graphics card.</p>
+
+          <!--noformat-->
+          <table>
+            <tr>
+              <th>model</th>
+              <th>detected</th>
+              <th>runtime</th>
+            </tr>
+            <tr><td>XS</td><td>78.0%</td><td>1x (fast)</td></tr>
+            <tr><td> S</td><td>81.8%</td><td>2x</td></tr>
+            <tr><td> M</td><td>83.5%</td><td>6x</td></tr>
+            <tr><td> L</td><td>84.6%</td><td>12x</td></tr>
+            <tr><td>XL</td><td>84.9%</td><td>24x (slow)</td></tr>
+          </table>
+          <!--noformat-->
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Previous Detections</legend>
+      <div class="flexHelp">
+        <div>
+          <button id="purgeCache">Purge Detection Cache</button><br>
+          <span id="purgeCacheText"></span>
+        </div>
+        <div>
+          <p>Since detection can be slow, the results will be stored by filename
+            for each model in your browser. If you don't clean your
+            cache/<tt>localStorage</tt> with some browser extensions, you can
+            close the page and return later to continue detection.</p>
+
+          <p>If you have different files with the same name, you need to purge
+            the detections. Otherwise, the detections from file 1 will be
+            rendered onto file 2 – i.e. the results will be garbage.</p>
+        </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Model Execution</legend>
+
+      <div class="flexHelp">
+        <div>
+          <label>
+            Run Model On
+            <select id="modelExecProvider">
+              <option value="webgpu,wasm">auto detect (recommended)</option>
+              <option value="webgpu">GPU – fast but might not work</option>
+              <option value="wasm">CPU – slower fallback</option>
+            </select>
+          </label>
+          <br>
+          <br>
+
+          <label>
+            Model Initialization:<br><span id="modelInitText"></span>
+            <progress id="modelInit" min="0" max="0" value="0"></progress>
+          </label>
+        </div>
+        <div>
+          <p>You can decide where to run the model. By default, it will pick the fastest supported option.</p>
+
+          <p>Usually your graphics card (GPU) is much faster. However, accessing
+            your GPU from the browser is a new browser feature and not as mature
+            as classic CPU computation. It's not even available everywhere.
+            Experiment with different browsers, or search for “enable WebGPU
+            &lt;browser name here&gt;” if you have time to spend.</p>
+        </div>
+      </div>
+    </fieldset>
+  </details>
+
+  <details>
+    <summary>
+      <h2>3. Advanced Options</h2>
+    </summary>
+    <fieldset>
+      <legend>Blurs</legend>
+      <label>
+        <input type="checkbox" checked="checked" id="drawBlursPerson" />
+        blur people's heads
+      </label>
+      <br>
+      <label>
+        <input type="checkbox" checked="checked" id="drawBlursPlate" />
+        blur license plates
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Troubleshooting</legend>
+      <p>You <strong>shouldn't change these options</strong> if processing
+        is working for you.</p>
+
+      <ul style="padding-left: 1em">
+        <li>
+          <label>
+            <input type="checkbox" id="drawBoxes" />
+            draw boxes with confidence around detections
+          </label>
+          <p>This makes detections easier to see if they are small and can help with
+            model selection.</p>
+        </li>
+        <li><label>
+            Video segment duration (“batch size”)<br>
+            <div class="flexRow">
+              <span>0.1s</span>
+              <div style="display: inline-block; padding: 0 1rem; margin-top: 0.5em">
+                <input type="range" id="segmentSeconds" min="0.1" max="10" step="0.1" value="2.0"
+                  oninput="document.getElementById('segmentSecondsOut').innerHTML = `${this.value} seconds`" />
+                <div id="segmentSecondsOut">2.0 seconds</div>
+              </div>
+              <span>10s</span>
+            </div>
+
+          </label>
+          <p>Processing works by splitting your video into short segments of equal
+            duration. If you run out of memory (page reloads or crashes), choose a
+            shorter segment duration. This should also decrease the time until the
+            actual extraction progress can be shown. However, short(er) segment
+            durations make processing longer and increase the output video's file
+            size.</p>
+        </li>
+        <li>Video Tool Variant
+          <br>
+          <label for="ffmpeg-st">
+            <input type="radio" id="ffmpeg-st" name="ffmpegOption" value="st">
+            Slow – but always works (recommended on mobile devices, and for Chrome and Edge)
+          </label>
+          <br>
+          <label for="ffmpeg-mt">
+            <input type="radio" id="ffmpeg-mt" name="ffmpegOption" value="mt">
+            Fast – but might hang without error message (recommended for Firefox on desktop)
+          </label>
+          <p>Video Tool Variant is auto-selected. If the extraction and
+            detection work, but the encoding hangs for long periods (5min+)
+            without progress, reload the page and try selecting “slow”.</p>
+        </li>
+      </ul>
+    </fieldset>
+  </details>
+
+  <h2>4. Processing</h2>
+  <fieldset>
+    <div class="flexHelp">
+      <div>
+        <button id="start">Start Processing</button><br>
+        <div id="startSummary"></div>
+        <div id="missingStuff"></div>
+        <br>
+        <br>
+
+        <label class="progress">
+          <span id="processText"></span><br>
+          <progress id="process" min="0" max="0" value="0" class="hide"></progress>
+        </label>
+
+        <label class="progress" style="transition-delay: 1s">
+          <span id="subProcessText">(will show sub tasks not known ahead of time)</span><br>
+          <progress id="subProcess" min="0" max="0" value="0" class="hide"></progress>
+        </label>
+      </div>
+      <div>
+        <p>The page might “hang” (= isn't reacting to your clicks or scrolls)
+          for some periods of time.</p>
+        <p>Progress cannot always be shown and will jump back and forth.
+          Processing happens in segments and in parallel, so the “maximum” of each
+          step might change as processing continues. The order is extraction →
+          detection → encoding.</p>
+        <p>If you don't see (actual) progress or the page hangs for 5min+, it
+          probably means something is broken. If possible, scroll down to the <a href="#debug">Technical Information</a>
+          section for more detail.</p>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset id="preview">
+    <legend>Preview</legend>
+    <p>Will show last processed video frame. It will play the finished video upon completion.</p>
+    <video id="video" controls loop muted autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+  </fieldset>
+
+  <h2>5. Download</h2>
+  <fieldset>
+    <a id="downloadButton"><button disabled>Save rendered video to disk</button></a> <span
+      id="downloadButtonText"></span>
+    <p>Available after video finishes rendering.</p>
+
+    <p>The video should contain the processed video and the original audio
+      track. Other parts are likely removed, for example GPS and acceleration
+      information attached by action cameras.</p>
+
+    <p>File size depends on your browser's video encoding support and may vary.
+      Quality degradation should be mostly imperceptible (i.e. better than
+      YouTube).</p>
+  </fieldset>
+
+  <details>
+    <summary>
+      <h2 id="debug" name="debug">6. Technical Information</h2>
+    </summary>
+    <fieldset>
+      <p>If the status below isn't helpful, you might get more helpful info from
+        your browser's “Developer Tools”. These are typically opened by the
+        <tt>CTRL+SHIFT+I</tt> keyboard combination. On mobile devices you're out of
+        luck.
+      </p>
+      <div id="status"></div>
+
+      <h3>logs</h3>
+      <table id="logs"></table>
+    </fieldset>
+  </details>
+</body>
+
+</html>
